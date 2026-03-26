@@ -82,42 +82,65 @@ classDiagram
         -name: str
         -daily_time_budget: int
         -pets: list[Pet]
+        -_pet_index: dict[str, Pet]
         +add_pet(pet: Pet) void
+        +remove_pet(name: str) bool
+        +get_pet(name: str) Pet
         +get_all_tasks() list[Task]
         +get_due_tasks(date) list[Task]
+        +get_pending_tasks() list[Task]
+        +summary() dict
+        +to_dict() dict
+        +from_dict(data) Owner
     }
-    
+
     class Pet {
         -name: str
+        -species: str
         -tasks: list[Task]
         +add_task(task: Task) void
+        +remove_task(description: str) bool
         +get_tasks() list[Task]
+        +get_pending_tasks() list[Task]
         +get_tasks_for_today(date) list[Task]
+        +to_dict() dict
+        +from_dict(data) Pet
     }
-    
+
     class Task {
-        -title: str
+        -description: str
         -duration_minutes: int
         -priority: int
         -due_time: str
-        -completed: bool
         -pet_name: str
+        -frequency: str
+        -completed: bool
+        -due_date: date
         +mark_complete() void
         +is_due_today(date) bool
         +to_dict() dict
     }
-    
+
     class Scheduler {
+        +sort_by_time(tasks: list) list
         +sort_tasks(tasks: list) list
+        +filter_tasks(tasks, completed, pet_name) list
+        +get_tasks_by_frequency(tasks, frequency) list
+        +get_high_priority_tasks(tasks, min_priority) list
         +generate_daily_plan(owner: Owner, date) dict
+        +check_same_time_conflicts(tasks: list) list
         +detect_conflicts(tasks: list) list
+        +mark_task_complete(task, pet, today) Task
+        +mark_all_complete(tasks: list) void
+        +reset_completed(tasks: list) void
         +explain_plan(plan: dict) str
     }
-    
-    Owner "1" --> "*" Pet : owns
-    Pet "1" --> "*" Task : contains
-    Scheduler --> Owner : operates on
-    Scheduler --> Task : organizes
+
+    Owner "1" *-- "*" Pet : owns
+    Pet "1" *-- "*" Task : contains
+    Scheduler ..> Owner : uses
+    Scheduler ..> Pet : uses
+    Scheduler ..> Task : operates on
 
 
 **a. Initial design**
