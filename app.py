@@ -80,8 +80,12 @@ if st.button("Add Pet"):
         st.success(f"Added {pet_name} the {species}!")
 
 if owner.pets:
-    st.write("Pets registered:")
-    st.table([{"name": p.name, "species": p.species, "tasks": len(p.tasks)} for p in owner.pets])
+    st.caption("Registered pets")
+    st.dataframe(
+        [{"Name": p.name, "Species": p.species.capitalize(), "Tasks": len(p.tasks)} for p in owner.pets],
+        width='stretch',
+        hide_index=True,
+    )
 
     pet_to_remove = st.selectbox("Select a pet to remove", [p.name for p in owner.pets], key="remove_pet_select")
     if st.button("Remove Pet"):
@@ -134,8 +138,63 @@ else:
     # Show all tasks across all pets
     all_tasks = owner.get_all_tasks()   # Owner.get_all_tasks() aggregates across pets
     if all_tasks:
-        st.write("All tasks:")
-        st.table([t.to_dict() for t in all_tasks])
+        sorted_tasks = scheduler.sort_tasks(all_tasks)
+        st.caption("All tasks — sorted by priority (high → low), then due time")
+        _PRIORITY_LABEL = {1: "1 – Lowest", 2: "2 – Low", 3: "3 – Medium", 4: "4 – High", 5: "5 – Critical"}
+        st.dataframe(
+            [
+                {
+                    "Status": "✅ Done" if t.completed else "⏳ Pending",
+                    "Task": t.description,
+                    "Pet": t.pet_name,
+                    "Due": t.due_time,
+                    "Duration": f"{t.duration_minutes} min",
+                    "Priority": _PRIORITY_LABEL.get(t.priority, str(t.priority)),
+                    "Frequency": t.frequency.capitalize(),
+                }
+                for t in sorted_tasks
+            ],
+            width='stretch',
+            hide_index=True,
+        )
+
+        # Conflict detection — detect_conflicts catches exact same-time as a subset
+        # of window overlaps, so it's the single source of truth here.
+        st.markdown("**Schedule Conflicts**")
+        overlap_conflicts = scheduler.detect_conflicts(all_tasks)
+        if overlap_conflicts:
+            for t1, t2, reschedule in overlap_conflicts:
+                exact_same_time = t1.due_time == t2.due_time
+                with st.container(border=True):
+                    if exact_same_time:
+                        st.error(
+                            f"Both tasks start at exactly **{t1.due_time}** "
+                            f"and cannot run simultaneously."
+                        )
+                    else:
+                        st.warning(
+                            f"**{t1.description}** ({t1.due_time}, {t1.duration_minutes} min) "
+                            f"overlaps with **{t2.description}** ({t2.due_time}, {t2.duration_minutes} min)."
+                        )
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.markdown(f"**{t1.description}**")
+                        st.caption(
+                            f"Pet: {t1.pet_name} · Start: {t1.due_time} "
+                            f"· {t1.duration_minutes} min · Priority {t1.priority}"
+                        )
+                    with col_b:
+                        st.markdown(f"**{t2.description}**")
+                        st.caption(
+                            f"Pet: {t2.pet_name} · Start: {t2.due_time} "
+                            f"· {t2.duration_minutes} min · Priority {t2.priority}"
+                        )
+                    st.info(
+                        f"💡 Suggested fix: reschedule **{reschedule.description}** "
+                        f"({reschedule.pet_name}) — it has the lower priority of the two."
+                    )
+        else:
+            st.success("No schedule conflicts — all tasks have distinct time windows.")
 
         remove_from_pet = st.selectbox("Remove a task from pet", [p.name for p in owner.pets], key="remove_task_pet")
         remove_pet_obj = owner.get_pet(remove_from_pet)
@@ -154,7 +213,7 @@ st.divider()
 st.subheader("Mark Task Complete")
 
 all_tasks = owner.get_all_tasks()
-pending_tasks = [t for t in all_tasks if not t.completed]
+pending_tasks = scheduler.sort_tasks(scheduler.filter_tasks(all_tasks, completed=False))
 
 if not pending_tasks:
     st.info("No pending tasks to complete.")
@@ -162,6 +221,13 @@ else:
     task_labels = [f"{t.description} ({t.pet_name}) @ {t.due_time}" for t in pending_tasks]
     selected_label = st.selectbox("Select a task to mark complete", task_labels)
     selected_task = pending_tasks[task_labels.index(selected_label)]
+
+    with st.container(border=True):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Pet", selected_task.pet_name)
+        c2.metric("Due", selected_task.due_time)
+        c3.metric("Duration", f"{selected_task.duration_minutes} min")
+        c4.metric("Priority", selected_task.priority)
 
     if st.button("Mark Complete"):
         pet = owner.get_pet(selected_task.pet_name)
@@ -195,12 +261,63 @@ st.subheader("Build Schedule")
 all_tasks = owner.get_all_tasks()
 urgent = scheduler.get_high_priority_tasks(all_tasks, min_priority=4)
 if urgent:
-    st.warning(f"⚠️ {len(urgent)} high-priority task(s) need attention:")
-    for t in urgent:
-        st.write(f"- **{t.description}** ({t.pet_name}) @ {t.due_time} — priority {t.priority}")
+    st.error(f"🚨 {len(urgent)} high-priority task(s) need attention")
+    st.dataframe(
+        [{"Task": t.description, "Pet": t.pet_name, "Due": t.due_time, "Priority": t.priority} for t in urgent],
+        width='stretch',
+        hide_index=True,
+    )
 
 schedule_date = st.date_input("Schedule date", value=date.today())
 
 if st.button("Generate schedule"):
     plan = scheduler.generate_daily_plan(owner, schedule_date)
-    st.text(scheduler.explain_plan(plan))
+
+    # Budget summary
+    remaining = plan["time_budget"] - plan["time_used"]
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Budget", f"{plan['time_budget']} min")
+    m2.metric("Time Used", f"{plan['time_used']} min")
+    m3.metric("Remaining", f"{remaining} min")
+
+    st.divider()
+
+    # Scheduled tasks
+    if plan["scheduled"]:
+        st.success(f"{len(plan['scheduled'])} task(s) scheduled for {plan['date']}")
+        st.dataframe(
+            [
+                {
+                    "Time": t.due_time,
+                    "Task": t.description,
+                    "Pet": t.pet_name,
+                    "Duration": f"{t.duration_minutes} min",
+                    "Priority": t.priority,
+                    "Frequency": t.frequency.capitalize(),
+                }
+                for t in plan["scheduled"]
+            ],
+            width='stretch',
+            hide_index=True,
+        )
+    else:
+        st.info("No tasks scheduled for this day.")
+
+    # Skipped tasks
+    skipped_over_budget = [t for t in plan["skipped"] if not t.completed]
+    skipped_done = [t for t in plan["skipped"] if t.completed]
+
+    if skipped_over_budget:
+        st.warning(f"{len(skipped_over_budget)} task(s) skipped — insufficient time remaining")
+        st.dataframe(
+            [{"Task": t.description, "Pet": t.pet_name, "Duration": f"{t.duration_minutes} min", "Priority": t.priority} for t in skipped_over_budget],
+            width='stretch',
+            hide_index=True,
+        )
+
+    if skipped_done:
+        st.info(f"{len(skipped_done)} task(s) already completed and excluded from plan")
+
+    # Budget warnings for high-priority skips
+    for w in plan["warnings"]:
+        st.error(f"⚠️ {w}")
