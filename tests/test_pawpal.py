@@ -103,6 +103,16 @@ class TestTaskIsDueToday:
         task = Task("Groom", 20, 2, "10:00", "Buddy", frequency="weekly", due_date=None)
         assert task.is_due_today(today) is True
 
+    def test_weekly_due_across_year_boundary(self):
+        """A weekly task anchored to a Monday in late December is due 7 days later
+        in early January of the following year (weekday comparison is date-agnostic)."""
+        anchor = date(2025, 12, 29)  # Monday
+        next_monday = date(2026, 1, 5)   # Monday, next year
+        not_tuesday = date(2026, 1, 6)   # Tuesday
+        task = Task("Groom", 20, 2, "10:00", "Buddy", frequency="weekly", due_date=anchor)
+        assert task.is_due_today(next_monday) is True
+        assert task.is_due_today(not_tuesday) is False
+
     def test_unknown_frequency_returns_false(self, today):
         task = Task("Mystery", 10, 1, "09:00", "Buddy", frequency="monthly")
         assert task.is_due_today(today) is False
@@ -500,6 +510,28 @@ class TestGenerateDailyPlan:
         plan = scheduler.generate_daily_plan(o, today)
         assert len(plan["scheduled"]) == 0
 
+    def test_task_fits_exactly_on_remaining_budget(self, scheduler, today):
+        """A task whose duration equals the remaining budget must be scheduled (<=, not <)."""
+        o = self._make_owner(30)
+        p = Pet("Buddy", "dog")
+        o.add_pet(p)
+        p.add_task(Task("Walk", 30, 3, "07:00", "Buddy"))
+        plan = scheduler.generate_daily_plan(o, today)
+        assert len(plan["scheduled"]) == 1
+        assert plan["time_used"] == 30
+        assert len(plan["skipped"]) == 0
+
+    def test_once_task_no_due_date_appears_in_plan_every_day(self, scheduler, today):
+        """once task with due_date=None is treated as always-due and appears in the plan."""
+        o = self._make_owner(120)
+        p = Pet("Buddy", "dog")
+        o.add_pet(p)
+        p.add_task(Task("Vet", 60, 3, "14:00", "Buddy", frequency="once", due_date=None))
+        plan_today = scheduler.generate_daily_plan(o, today)
+        plan_tomorrow = scheduler.generate_daily_plan(o, today + timedelta(days=1))
+        assert len(plan_today["scheduled"]) == 1
+        assert len(plan_tomorrow["scheduled"]) == 1
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Scheduler – conflict detection
@@ -612,6 +644,22 @@ class TestDetectConflicts:
         conflicts = scheduler.detect_conflicts(tasks)
         assert len(conflicts) >= 2
 
+    def test_overnight_task_misses_conflict_with_early_morning(self, scheduler):
+        """Overnight-spanning tasks produce a missed conflict (false negative).
+
+        LateNight: 23:00 + 120 min → strptime end = 1900-01-02 01:00
+        EarlyBird: 00:30 on the same base date = 1900-01-01 00:30
+
+        The overlap check `start1(23:00) < end2(00:30+30=01:00 same day)` is False,
+        so no conflict is reported — even though in real time these windows overlap.
+        This documents the known limitation of the strptime-based approach."""
+        tasks = [
+            Task("LateNight", 120, 3, "23:00", "Buddy"),  # 23:00–01:00 next day
+            Task("EarlyBird",  30, 2, "00:30", "Buddy"),  # 00:30–01:00 same base date
+        ]
+        conflicts = scheduler.detect_conflicts(tasks)
+        assert len(conflicts) == 0  # overlap is missed — known limitation
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Scheduler – task completion and recurrence
@@ -666,6 +714,16 @@ class TestMarkTaskComplete:
         buddy.add_task(task)
         next_task = scheduler.mark_task_complete(task, buddy)
         assert next_task.due_date == date.today() + timedelta(days=1)
+
+    def test_mark_task_complete_twice_adds_two_occurrences(self, scheduler, buddy, today):
+        """Calling mark_task_complete twice on the same recurring task creates two
+        next-occurrence entries — documents the duplication behavior."""
+        task = Task("Walk", 30, 3, "07:00", "Buddy", frequency="daily")
+        buddy.add_task(task)
+        initial_count = len(buddy.tasks)
+        scheduler.mark_task_complete(task, buddy, today)
+        scheduler.mark_task_complete(task, buddy, today)
+        assert len(buddy.tasks) == initial_count + 2
 
 
 class TestMarkAllComplete:
