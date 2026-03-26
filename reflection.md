@@ -58,7 +58,7 @@ Compute a prioritized schedule based on constraints (time budget, priority, dead
     add_pet(pet)
     get_all_tasks()
     get_due_tasks(date)
-    
+
 4. Scheduler
 
     Core logic.
@@ -123,12 +123,35 @@ classDiagram
 **a. Initial design**
 
 - Briefly describe your initial UML design.
+    The design follows a layered object model where data ownership flows from Owner → Pet → Task, and a separate Scheduler class handles all decision-making logic. This separation keeps data storage independent from scheduling behavior.
+
 - What classes did you include, and what responsibilities did you assign to each?
+    The system is built around a few simple classes, each with a clear role.
+
+    `Owner` represents the user. It keeps track of all the pets and stores things like how much time the user has available in a day. Its main job is to give a combined view of all tasks across pets so the system can plan the day.
+
+    `Pet` represents an individual animal. It acts as a container for tasks related to that pet. It handles adding and retrieving tasks, keeping everything organized per pet instead of mixing tasks together.
+
+    `Task` is the smallest unit in the system. It represents a single activity like feeding or a walk. It stores details such as duration, priority, and due time, and it can update its own status when completed.
+
+    `Scheduler` is the decision-making part of the system. It takes all the tasks from the owner, sorts and prioritizes them, checks for conflicts, and builds a daily plan based on the available time. It also explains why certain tasks were selected or skipped.
+
+    Each class has one clear responsibility, which keeps the system simple and easy to extend.
+
 
 **b. Design changes**
 
 - Did your design change during implementation?
+
+        Yes, the design changed in two ways during implementation.
+
 - If yes, describe at least one change and why you made it.
+
+    **Change 1 — `Pet.add_task()` gained a consistency guard**
+    The original design stored `pet_name` as a plain string on `Task`, with no enforcement that it matched the `Pet` it was being added to. During implementation it became clear that a task could silently end up in the wrong pet's list while still displaying the wrong name — a data inconsistency with no error signal. To fix this, `add_task()` was updated to raise a `ValueError` if `task.pet_name` does not match `self.name`. This was not part of the original UML but became necessary once the method was actually written.
+
+    **Change 2 — `generate_daily_plan` returns more fields than originally planned**
+    The original spec said the plan dictionary should contain scheduled and skipped tasks. During implementation of `explain_plan`, it became clear that the explanation also needed `time_used`, `time_budget`, and `date` to produce a meaningful summary. Without those fields, `explain_plan` would have needed to accept `owner` as a second argument, breaking its stated signature. Adding those three keys to the plan dictionary kept `explain_plan` self-contained and decoupled from `Owner`.
 
 ---
 
