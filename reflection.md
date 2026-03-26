@@ -160,12 +160,22 @@ classDiagram
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
+
+    The scheduler works with three main constraints when building a daily plan. The hardest limit is **time** — every owner has a `daily_time_budget` in minutes, and the scheduler stops adding tasks the moment the next one would push past that ceiling. The second constraint is **priority** — each task carries a numeric priority value, and higher-priority tasks are always scheduled first so they're never crowded out by less important ones. The third is **timing** — tasks have a `due_time` like `"08:00"`, and when two tasks share the same priority, the earlier one goes first. There's also a softer fourth constraint: **duration** — if priority and time are both tied, shorter tasks get preference so more tasks can fit within the budget. The scheduler also skips tasks already marked **completed** and raises a warning if any high-priority task (priority ≥ 4) ends up getting dropped due to time running out.
+
 - How did you decide which constraints mattered most?
+
+    Time came first because it's a hard wall — no matter how important a task is, you can't do it if the time simply isn't there. Priority came second because the whole point of a scheduler is making sure the things that matter most actually happen, not just the ones that appear first in a list. Due time was third, acting as a natural tiebreaker — it makes sense that a morning walk at 7:00 should come before a grooming session at 14:00. Duration was last, used only as a final tiebreaker to quietly squeeze more tasks in when everything else is equal. That ordering mirrors how a real person would think: *do I have time for this? Is it important? When is it due? How long will it take?*
 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
+
+    The scheduler uses a **greedy approach** — it goes through the sorted task list from top to bottom and adds each task to the plan as long as there is still time left. Once a task doesn't fit, it is skipped, and the scheduler moves on. It does not look ahead or try different combinations to find a better fit. For example, if a 90-minute task fills up the remaining budget, two smaller 30-minute tasks that could have both fit will be skipped, even though they would have been a better use of the time.
+
 - Why is that tradeoff reasonable for this scenario?
+
+    For a daily pet care app, finding the mathematically perfect schedule is less important than being fast and predictable. A greedy scheduler runs instantly even with many tasks, and it always produces the same result for the same input — which makes it easy for the owner to understand and trust. Since tasks are already sorted by priority before the greedy pass runs, the most important tasks always get considered first, which means the plan is good enough in practice even if it isn't theoretically optimal.
 
 ---
 
