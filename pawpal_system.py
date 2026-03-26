@@ -10,20 +10,29 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 
+# ── Task ────────────────────────────────────────────────────────────────────
+
 @dataclass
 class Task:
     """
-    Represents a single pet care task.
+    Represents a single pet care activity.
 
-    A task is a unit of work tied to a specific pet with duration,
-    priority, and timing constraints.
+    Attributes:
+        description:       What needs to be done (e.g. "Morning walk").
+        duration_minutes:  How long the activity takes.
+        priority:          Scheduling importance (higher = scheduled first).
+        due_time:          Time-of-day string in "HH:MM" 24-hour format.
+        pet_name:          The name of the pet this task belongs to.
+        frequency:         How often the task recurs: "daily", "weekly", or "once".
+        completed:         Whether the task has been marked done.
     """
 
-    title: str
+    description: str
     duration_minutes: int
     priority: int
     due_time: str
     pet_name: str
+    frequency: str = "daily"   # "daily" | "weekly" | "once"
     completed: bool = False
 
     def mark_complete(self):
@@ -31,105 +40,160 @@ class Task:
         self.completed = True
 
     def is_due_today(self, date):
-        """Check if this task is due on a given date.
-
-        Since tasks store only a time (not a full date), all tasks are
-        treated as daily and are always considered due today.
-        """
+        """Return True if this task is due on the given date."""
         return True
 
     def to_dict(self):
-        """Convert task to dictionary representation."""
+        """Return a plain-dict representation of this task."""
         return {
-            "title": self.title,
+            "description": self.description,
             "duration_minutes": self.duration_minutes,
             "priority": self.priority,
             "due_time": self.due_time,
             "pet_name": self.pet_name,
+            "frequency": self.frequency,
             "completed": self.completed,
         }
 
+    def __str__(self):
+        status = "✓" if self.completed else "○"
+        return (
+            f"[{status}] {self.description} ({self.pet_name}) "
+            f"@ {self.due_time} — {self.duration_minutes} min, "
+            f"priority {self.priority}, {self.frequency}"
+        )
+
+
+# ── Pet ─────────────────────────────────────────────────────────────────────
 
 @dataclass
 class Pet:
     """
-    Represents a pet and its associated care tasks.
+    Stores pet details and its list of care tasks.
 
-    A pet serves as a container for managing all tasks related to that animal,
-    and tracks the pet's basic information.
+    Attributes:
+        name:    The pet's name.
+        species: The type of animal (e.g. "dog", "cat", "rabbit").
+        tasks:   All care tasks associated with this pet.
     """
 
     name: str
+    species: str = "unknown"
     tasks: List[Task] = field(default_factory=list)
 
-    def add_task(self, task):
-        """Add a task to this pet's task list.
-
-        Enforces that task.pet_name matches this pet's name to prevent
-        silent data inconsistency between the task and its owning pet.
-        """
+    def add_task(self, task: Task):
+        """Append a task to this pet's list, raising ValueError if pet_name mismatches."""
         if task.pet_name != self.name:
             raise ValueError(
                 f"Task pet_name '{task.pet_name}' does not match pet name '{self.name}'"
             )
         self.tasks.append(task)
 
-    def get_tasks(self):
-        """Get all tasks for this pet."""
+    def remove_task(self, description: str):
+        """Remove the first task whose description matches (case-insensitive)."""
+        for i, task in enumerate(self.tasks):
+            if task.description.lower() == description.lower():
+                self.tasks.pop(i)
+                return True
+        return False
+
+    def get_tasks(self) -> List[Task]:
+        """Return a copy of all tasks for this pet."""
         return list(self.tasks)
 
-    def get_tasks_for_today(self, date):
-        """Get tasks due today for this pet."""
-        return [task for task in self.tasks if task.is_due_today(date)]
+    def get_pending_tasks(self) -> List[Task]:
+        """Return only incomplete tasks."""
+        return [t for t in self.tasks if not t.completed]
 
+    def get_tasks_for_today(self, date) -> List[Task]:
+        """Return tasks due today for this pet."""
+        return [t for t in self.tasks if t.is_due_today(date)]
+
+    def __str__(self):
+        return f"{self.name} ({self.species}) — {len(self.tasks)} task(s)"
+
+
+# ── Owner ────────────────────────────────────────────────────────────────────
 
 @dataclass
 class Owner:
     """
-    Represents a pet owner who manages one or more pets.
+    Manages multiple pets and provides access to all their tasks.
 
-    An owner aggregates multiple pets and has a time budget constraint
-    for managing daily pet care tasks.
+    Attributes:
+        name:              The owner's display name.
+        daily_time_budget: Maximum minutes available for pet care each day.
+        pets:              All pets this owner is responsible for.
     """
 
     name: str
     daily_time_budget: int
     pets: List[Pet] = field(default_factory=list)
 
-    def add_pet(self, pet):
-        """Add a pet to this owner's collection."""
+    def add_pet(self, pet: Pet):
+        """Register a pet with this owner."""
         self.pets.append(pet)
 
-    def get_all_tasks(self):
-        """Get all tasks across all pets."""
+    def remove_pet(self, name: str) -> bool:
+        """Remove a pet by name. Returns True if found and removed."""
+        for i, pet in enumerate(self.pets):
+            if pet.name.lower() == name.lower():
+                self.pets.pop(i)
+                return True
+        return False
+
+    def get_pet(self, name: str):
+        """Return a pet by name, or None if not found."""
+        for pet in self.pets:
+            if pet.name.lower() == name.lower():
+                return pet
+        return None
+
+    def get_all_tasks(self) -> List[Task]:
+        """Aggregate and return every task across all pets."""
         return [task for pet in self.pets for task in pet.get_tasks()]
 
-    def get_due_tasks(self, date):
-        """Get all tasks due on a specific date across all pets."""
+    def get_due_tasks(self, date) -> List[Task]:
+        """Return all tasks due on a specific date across all pets."""
         return [task for pet in self.pets for task in pet.get_tasks_for_today(date)]
 
+    def get_pending_tasks(self) -> List[Task]:
+        """Return all incomplete tasks across all pets."""
+        return [task for pet in self.pets for task in pet.get_pending_tasks()]
+
+    def summary(self) -> Dict:
+        """Return a quick stats summary for this owner."""
+        all_tasks = self.get_all_tasks()
+        return {
+            "owner": self.name,
+            "pets": len(self.pets),
+            "total_tasks": len(all_tasks),
+            "completed_tasks": sum(1 for t in all_tasks if t.completed),
+            "pending_tasks": sum(1 for t in all_tasks if not t.completed),
+            "daily_time_budget": self.daily_time_budget,
+        }
+
+    def __str__(self):
+        return (
+            f"Owner: {self.name} | Budget: {self.daily_time_budget} min/day "
+            f"| Pets: {len(self.pets)}"
+        )
+
+
+# ── Scheduler ────────────────────────────────────────────────────────────────
 
 class Scheduler:
     """
-    Core scheduling logic for generating daily pet care plans.
+    The "brain" that retrieves, organises, and manages tasks across pets.
 
-    A stateless utility class that produces optimal schedules based on
-    owner constraints, task properties, and scheduling strategies.
+    A stateless utility class that produces optimal daily schedules based on
+    owner constraints, task priorities, and timing information.
     """
 
-    def sort_tasks(self, tasks):
-        """
-        Sort tasks by priority (descending) then due time (ascending).
+    # ── Sorting / retrieval ──────────────────────────────────────────────
 
-        Higher priority numbers are scheduled first. Tasks with unparseable
-        due_time strings are sorted last.
-
-        Args:
-            tasks: List of tasks to sort
-
-        Returns:
-            Sorted list of tasks
-        """
+    def sort_tasks(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks by priority descending, then due_time ascending (unparseable times last)."""
         def sort_key(task):
             try:
                 due = datetime.strptime(task.due_time, "%H:%M")
@@ -139,25 +203,19 @@ class Scheduler:
 
         return sorted(tasks, key=sort_key)
 
-    def generate_daily_plan(self, owner, date):
-        """
-        Generate a daily care plan for an owner.
+    def get_tasks_by_frequency(self, tasks: List[Task], frequency: str) -> List[Task]:
+        """Return only tasks that match the given frequency string."""
+        return [t for t in tasks if t.frequency == frequency]
 
-        Greedily schedules tasks in priority/time order until the owner's
-        daily_time_budget is exhausted. Already-completed tasks are skipped.
+    def get_high_priority_tasks(self, tasks: List[Task], min_priority: int = 4) -> List[Task]:
+        """Return tasks at or above min_priority, sorted by priority desc."""
+        high = [t for t in tasks if t.priority >= min_priority]
+        return sorted(high, key=lambda t: -t.priority)
 
-        Args:
-            owner: The pet owner
-            date: The date to plan for
+    # ── Core scheduling ──────────────────────────────────────────────────
 
-        Returns:
-            Dictionary with keys:
-              "scheduled"   — list of Task objects to be done
-              "skipped"     — list of Task objects that did not fit or are done
-              "time_used"   — total minutes scheduled
-              "time_budget" — owner's daily time budget in minutes
-              "date"        — the date this plan is for
-        """
+    def generate_daily_plan(self, owner: Owner, date) -> Dict:
+        """Build a greedy daily schedule fitting tasks within the owner's time budget."""
         due_tasks = owner.get_due_tasks(date)
         sorted_tasks = self.sort_tasks(due_tasks)
 
@@ -183,20 +241,10 @@ class Scheduler:
             "date": date,
         }
 
-    def detect_conflicts(self, tasks):
-        """
-        Identify scheduling conflicts in a task list.
+    # ── Conflict detection ───────────────────────────────────────────────
 
-        Two tasks conflict when their time windows overlap, i.e.
-        [due_time, due_time + duration) intersects for both tasks.
-        Tasks with unparseable due_time strings are skipped.
-
-        Args:
-            tasks: List of tasks to check
-
-        Returns:
-            List of (Task, Task) tuples that have overlapping time windows
-        """
+    def detect_conflicts(self, tasks: List[Task]) -> List[tuple]:
+        """Return (Task, Task) pairs whose time windows overlap."""
         conflicts = []
         for i in range(len(tasks)):
             for j in range(i + 1, len(tasks)):
@@ -212,16 +260,22 @@ class Scheduler:
                     conflicts.append((t1, t2))
         return conflicts
 
-    def explain_plan(self, plan):
-        """
-        Generate a human-readable explanation of the schedule.
+    # ── Bulk task management ─────────────────────────────────────────────
 
-        Args:
-            plan: Dictionary returned by generate_daily_plan
+    def mark_all_complete(self, tasks: List[Task]):
+        """Mark every task in the list as completed."""
+        for task in tasks:
+            task.mark_complete()
 
-        Returns:
-            Multi-line string describing scheduled and skipped tasks
-        """
+    def reset_completed(self, tasks: List[Task]):
+        """Reset the completed flag on all tasks (useful for a new day)."""
+        for task in tasks:
+            task.completed = False
+
+    # ── Explanation ──────────────────────────────────────────────────────
+
+    def explain_plan(self, plan: Dict) -> str:
+        """Return a human-readable multi-line summary of scheduled and skipped tasks."""
         lines = []
         lines.append(f"Daily Care Plan — {plan['date']}")
         lines.append(
@@ -235,8 +289,9 @@ class Scheduler:
             lines.append("Scheduled tasks:")
             for task in plan["scheduled"]:
                 lines.append(
-                    f"  [{task.due_time}] {task.title} ({task.pet_name})"
+                    f"  [{task.due_time}] {task.description} ({task.pet_name})"
                     f" — {task.duration_minutes} min, priority {task.priority}"
+                    f", {task.frequency}"
                 )
         else:
             lines.append("No tasks scheduled.")
@@ -247,7 +302,7 @@ class Scheduler:
             lines.append("Skipped tasks:")
             for task in plan["skipped"]:
                 reason = "already completed" if task.completed else "insufficient time remaining"
-                lines.append(f"  {task.title} ({task.pet_name}) — {reason}")
+                lines.append(f"  {task.description} ({task.pet_name}) — {reason}")
         else:
             lines.append("No tasks were skipped.")
 
