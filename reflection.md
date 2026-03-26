@@ -2,6 +2,124 @@
 
 ## 1. System Design
 
+Register and manage pets
+Create, view, and update pet profiles (name, species, age). This establishes the primary entity container for all subsequent task management.
+
+Create and manage care tasks
+Add, edit, and remove tasks tied to a specific pet with attributes such as duration, priority, due time, and recurrence. This forms the input space for the scheduling system.
+
+Generate and review the daily care plan
+Compute a prioritized schedule based on constraints (time budget, priority, deadlines), display selected vs skipped tasks, and provide an explanation of scheduling decisions.
+
+1. Task
+    Core unit of work.
+
+    Attributes
+
+    title
+    duration_minutes
+    priority
+    due_time
+    completed
+    pet_name
+
+    Methods
+
+    mark_complete()
+    is_due_today(date)
+    to_dict()
+
+2. Pet
+    Container for tasks.
+
+    Attributes
+
+    name
+    tasks
+
+    Methods
+
+    add_task(task)
+    get_tasks()
+    get_tasks_for_today(date)
+
+3. Owner
+
+    Container for pets.
+
+    Attributes
+
+    name
+    daily_time_budget
+    pets
+
+    Methods
+
+    add_pet(pet)
+    get_all_tasks()
+    get_due_tasks(date)
+    
+4. Scheduler
+
+    Core logic.
+
+    Attributes
+
+    none required (stateless)
+
+    Methods
+
+    sort_tasks(tasks)
+    generate_daily_plan(owner, date)
+    detect_conflicts(tasks)
+    explain_plan(plan)
+
+
+Mermaid.js:
+
+classDiagram
+    class Owner {
+        -name: str
+        -daily_time_budget: int
+        -pets: list[Pet]
+        +add_pet(pet: Pet) void
+        +get_all_tasks() list[Task]
+        +get_due_tasks(date) list[Task]
+    }
+    
+    class Pet {
+        -name: str
+        -tasks: list[Task]
+        +add_task(task: Task) void
+        +get_tasks() list[Task]
+        +get_tasks_for_today(date) list[Task]
+    }
+    
+    class Task {
+        -title: str
+        -duration_minutes: int
+        -priority: int
+        -due_time: str
+        -completed: bool
+        -pet_name: str
+        +mark_complete() void
+        +is_due_today(date) bool
+        +to_dict() dict
+    }
+    
+    class Scheduler {
+        +sort_tasks(tasks: list) list
+        +generate_daily_plan(owner: Owner, date) dict
+        +detect_conflicts(tasks: list) list
+        +explain_plan(plan: dict) str
+    }
+    
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : contains
+    Scheduler --> Owner : operates on
+    Scheduler --> Task : organizes
+
+
 **a. Initial design**
 
 - Briefly describe your initial UML design.
