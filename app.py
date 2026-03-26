@@ -16,8 +16,8 @@ def load_state():
         try:
             with open(_DATA_FILE) as f:
                 st.session_state.owner = Owner.from_dict(json.load(f))
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Failed to load saved data: {e}")
 
 load_state()
 
@@ -33,7 +33,11 @@ owner_name = st.text_input("Owner name", value="Jordan")
 daily_budget = st.number_input("Daily time budget (minutes)", min_value=1, max_value=1440, value=120)
 
 if st.button("Set Owner"):
-    st.session_state.owner = Owner(name=owner_name, daily_time_budget=int(daily_budget))
+    if "owner" in st.session_state:
+        st.session_state.owner.name = owner_name
+        st.session_state.owner.daily_time_budget = int(daily_budget)
+    else:
+        st.session_state.owner = Owner(name=owner_name, daily_time_budget=int(daily_budget))
     save_state()
     st.success(f"Owner '{owner_name}' saved with a {daily_budget}-minute daily budget.")
 
@@ -141,18 +145,6 @@ else:
                 remove_pet_obj.remove_task(task_to_remove)
                 save_state()
                 st.success(f"Removed '{task_to_remove}' from {remove_from_pet}.")
-        # Conflict detection
-        conflict_warnings = scheduler.check_same_time_conflicts(all_tasks)
-        overlaps = scheduler.detect_conflicts(all_tasks)
-        if conflict_warnings or overlaps:
-            st.subheader("Scheduling Conflicts")
-            for w in conflict_warnings:
-                st.warning(w)
-            for t1, t2, reschedule in overlaps:
-                st.error(
-                    f"Overlap: '{t1.description}' ({t1.pet_name}) and '{t2.description}' ({t2.pet_name}) "
-                    f"overlap in time. Consider rescheduling '{reschedule.description}'."
-                )
     else:
         st.info("No tasks yet. Add one above.")
 
