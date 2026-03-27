@@ -142,6 +142,12 @@ classDiagram
     Scheduler ..> Pet : uses
     Scheduler ..> Task : operates on
 
+**Initial UML**
+![Initial UML](uml_initial.png)
+
+**Final UML**
+![Final UML](uml_final.png)
+
 
 **a. Initial design**
 
@@ -206,13 +212,13 @@ classDiagram
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used AI throughout the whole project. Early on I used it for brainstorming — things like "what should the Scheduler class be responsible for?" or "should conflict detection live in Scheduler or Pet?" It helped get a first draft of ideas down fast. Later I used it more for debugging and refactoring, like asking why a test was failing or how to clean up a method that was getting too long.
+
+The most useful prompts were specific and concrete. Instead of "help me with scheduling," something like "here's my `generate_daily_plan` method — why does it skip tasks even when there's time left?" got a much better answer. Asking AI to explain *why* something worked, not just fix it, was also helpful for actually learning from it.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+One moment that stood out: AI suggested making `Scheduler` a class with state — storing the owner and date as instance variables. I didn't go with that because the whole point of `Scheduler` was to be stateless and reusable. I verified this by thinking through what would happen if the same scheduler object was used for two different owners — the state would leak between calls. I kept `Scheduler` stateless and passed the owner and date as arguments to each method instead.
 
 ---
 
@@ -220,13 +226,13 @@ classDiagram
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+I tested the core behaviors: marking tasks complete, checking if a task is due today (for daily, weekly, and once-off tasks), adding tasks to pets, generating the daily plan, and detecting time conflicts. I also tested edge cases like what happens when the time budget is zero, or when all tasks are already completed.
+
+These tests mattered because the scheduler's whole job is to make the right call about which tasks to include. If the priority sorting or time budget logic is off, the plan it produces is wrong — and you'd never know without a test to catch it.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+Pretty confident for the normal cases — the tests cover the main paths well. That said, I'd want to test a few more edge cases given more time: what happens with tasks that have the same priority *and* the same due time, whether weekly tasks work correctly across a week boundary, and how the system handles a large number of tasks where the greedy approach might leave a lot of time unused.
 
 ---
 
@@ -234,12 +240,23 @@ classDiagram
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The class separation turned out really well. Keeping `Scheduler` completely separate from `Owner`, `Pet`, and `Task` meant I could change the scheduling logic without touching anything else. That made debugging much easier — when something was wrong with the plan, I knew exactly where to look.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+The greedy scheduler works, but it's not always the best fit. I'd redesign it to at least try a simple backtracking approach — so instead of just skipping a task that's too long, it checks if smaller lower-priority tasks could fill the remaining time better. I'd also add the ability to reschedule skipped tasks to the next available day rather than just dropping them.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The biggest thing I learned is that AI is most useful when you stay in charge of the design decisions. It's great at filling in details and catching mistakes, but if you just ask it to build the whole thing, you end up with code you don't fully understand. The moments where I pushed back on AI suggestions — like keeping `Scheduler` stateless — were the moments I actually learned something.
+
+
+Reflect on AI Strategy: Specifically describe your experience with VS Code Copilot:
+
+The most effective Copilot features were inline completions and the chat panel. Inline completions were great for boilerplate — things like `to_dict()` and `from_dict()` methods that follow a clear pattern. Once it saw the first one, it could basically write the rest. The chat panel was more useful for design questions, like talking through how `generate_daily_plan` should structure its return value or why a test was behaving unexpectedly.
+
+One example of a suggestion I rejected: Copilot proposed adding an `owner` parameter to `explain_plan` so it could pull the time budget directly from the owner object. I modified it to instead expect the plan dictionary to already contain `time_budget` and `time_used`. This kept `explain_plan` self-contained — it doesn't need to know anything about `Owner` to do its job, which made the method easier to test and reuse.
+
+Using separate chat sessions for different phases helped a lot with staying focused. When I was in the design phase, I didn't want debugging suggestions cluttering the conversation, and vice versa. Each session had a clear purpose — one for UML and class design, one for implementing the scheduler logic, one for writing tests. It also made it easier to go back and reference what was discussed in each phase without scrolling through a long mixed thread.
+
+The biggest thing I learned about being the "lead architect" is that you have to come in with a clear intent before asking AI anything. If you know what you want the system to do and why, you can evaluate AI suggestions against that — and push back when something doesn't fit. If you don't have that clarity, it's easy to just accept whatever the AI gives you and end up with a system that works but that you can't explain or extend. AI is a fast executor, not a designer. The design decisions still have to come from you.
